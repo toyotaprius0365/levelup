@@ -4,8 +4,8 @@ import json
 import os
 import datetime
 
-TOKEN = "YOUR DISCORD BOT TOKEN HERE!!!"
-version = "1.1.0"
+TOKEN = "YOUR DISCORD BOT TOKEN HERE!"
+version = "1.1.1"
 
 intents = discord.Intents.default()
 intents.messages = True
@@ -141,7 +141,7 @@ async def leaderboard(interaction: discord.Interaction):
 	)
 	await interaction.response.send_message(f"**XP Leaderboard:**\n{leaderboard}")
 
-# @bot.tree.command(name="daily", description="Use this command to receive your daily reward!")
+@bot.tree.command(name="daily", description="Use this command to receive your daily reward!")
 async def daily_reward(interaction: discord.Interaction):
 	try:
 		user_id = str(interaction.user.id)
@@ -153,30 +153,26 @@ async def daily_reward(interaction: discord.Interaction):
 		if user_id not in user_data:
 			user_data[user_id] = {"username": str(interaction.user), "xp": 0, "level": 1, "daily_reward_claimed": None}
 
-		if "daily_reward_claimed" not in user_data[user_id]:
-			print(f"User {user_id} does not have the 'daily_reward_claimed' field. Setting it to None")
-			user_data[user_id]["daily_reward_claimed"] = None
+		last_claim_date = user_data[user_id].get("daily_reward_claimed")
 
-		last_claim_time = user_data[user_id]["daily_reward_claimed"]
-
-		if last_claim_time:
+		# parse last claim date if it exists
+		if last_claim_date:
 			try:
-				last_claim_date = datetime.datetime.strptime(last_claim_time, "%Y-%m-%d").date()
-				last_claim_time = datetime.datetime.combine(last_claim_time, datetime.time.min)
+				last_claim_date = datetime.datetime.strptime(last_claim_date, "%Y-%m-%d").date()
 			except ValueError:
 				print(f"ERROR: Invalid date format for {user_id}, resetting.")
-				last_claim_time = None
+				last_claim_date = None
+				user_data[user_id]["daily_reward_claimed"] = None
 
-		if last_claim_time:
-			time_diff = now - last_claim_time
-
-			if time_diff.total_seconds() < 86400:
-				await interaction.response.send_message(f"{interaction.user.mention}, you can claim your daily reward again in {str(datetime.timedelta(seconds=86400 - time_diff.total_seconds()))}.")
-				return
+		# check if user is eligible to claim a daily reward
+		if last_claim_date and (now - last_claim_date).days < 1:
+			remaining_time = 24 - (now - last_claim_date).seconds // 3600
+			await interaction.response.send_message(f"{interaction.user.mention}, you can claim your daily reward again in {remaining_time} Hours.")
+			return
 
 		xp_reward = 50
 		user_data[user_id]["xp"] += xp_reward
-		user_data[user_id]["daily_reward_claimed"] = now.strftime("%Y-%m-%d %H:%M:%S")
+		user_data[user_id]["daily_reward_claimed"] = now.strftime("%Y-%m-%d")
 
 		save_data()
 
