@@ -2,9 +2,10 @@ import discord
 from discord.ext import commands
 import json
 import os
+import datetime
 
-TOKEN = "YOUR DISCORD BOT TOKEN HERE"
-version = "1.0.2"
+TOKEN = "YOUR DISCORD BOT TOKEN HERE!!!"
+version = "1.1.0"
 
 intents = discord.Intents.default()
 intents.messages = True
@@ -14,6 +15,7 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 user_data = {}
+daily_rewards = {} # global dictionary to store daily reward claims
 
 def load_data():
 	global user_data
@@ -48,6 +50,8 @@ async def assign_colored_role(member, level):
 async def on_ready():
 	print(f"Current Version: {version}")
 	print(f"NOTICE: Logged in as {bot.user}!")
+	#guild_id = 1316098515906199626
+	#guild = discord.Object(id=guild_id) # these are only for troubleshooting 1.1.0
 	load_data()
 
 	for guild in bot.guilds:
@@ -127,5 +131,67 @@ async def check_level(interaction: discord.Interaction):
 		xp = user_data[user_id]["xp"]
 		xp_next = xp_for_next_level(level)
 		await interaction.response.send_message(f"{interaction.user.mention}, you are Level {level} with {xp}/{xp_next} XP.") # ephemeral=True was deleted
+
+@bot.tree.command(name="leaderboard", description="See the server's XP leaderboard!")
+async def leaderboard(interaction: discord.Interaction):
+	sorted_users = sorted(user_data.items(), key=lambda x: x[1]["level"], reverse=True)
+	top_users = sorted_users[:10]
+	leaderboard = "\n".join(
+		[f"{i+1}. {user[1]['username']} - Level {user[1]['level']} ({user[1]['xp']} XP)" for i, user in enumerate(top_users)]
+	)
+	await interaction.response.send_message(f"**XP Leaderboard:**\n{leaderboard}")
+
+# @bot.tree.command(name="daily", description="Use this command to receive your daily reward!")
+async def daily_reward(interaction: discord.Interaction):
+	try:
+		user_id = str(interaction.user.id)
+		now = datetime.datetime.now().date()
+		print(f"{now} | datetime acquired")
+
+		load_data()
+
+		if user_id not in user_data:
+			user_data[user_id] = {"username": str(interaction.user), "xp": 0, "level": 1, "daily_reward_claimed": None}
+
+		if "daily_reward_claimed" not in user_data[user_id]:
+			print(f"User {user_id} does not have the 'daily_reward_claimed' field. Setting it to None")
+			user_data[user_id]["daily_reward_claimed"] = None
+
+		last_claim_time = user_data[user_id]["daily_reward_claimed"]
+
+		if last_claim_time:
+			try:
+				last_claim_date = datetime.datetime.strptime(last_claim_time, "%Y-%m-%d").date()
+				last_claim_time = datetime.datetime.combine(last_claim_time, datetime.time.min)
+			except ValueError:
+				print(f"ERROR: Invalid date format for {user_id}, resetting.")
+				last_claim_time = None
+
+		if last_claim_time:
+			time_diff = now - last_claim_time
+
+			if time_diff.total_seconds() < 86400:
+				await interaction.response.send_message(f"{interaction.user.mention}, you can claim your daily reward again in {str(datetime.timedelta(seconds=86400 - time_diff.total_seconds()))}.")
+				return
+
+		xp_reward = 50
+		user_data[user_id]["xp"] += xp_reward
+		user_data[user_id]["daily_reward_claimed"] = now.strftime("%Y-%m-%d %H:%M:%S")
+
+		save_data()
+
+		await interaction.response.send_message(f"{interaction.user.mention}, you claimed your daily reward of {xp_reward} XP!")
+		print(f"awarded {interaction.user.name} with {xp_reward} XP")
+
+	except Exception as e:
+		import traceback
+		print(f"ERROR: /daily command cannot function: {e}")
+		traceback.print_exc()
+		await interaction.response.send_message("An error occurred while processing your request.", ephemeral=True)
+
+@bot.event
+async def on_interaction(interaction: discord.Interaction):
+    if interaction.type == discord.InteractionType.application_command:
+        print(f"Interaction received: {interaction.data}")
 
 bot.run(TOKEN)
